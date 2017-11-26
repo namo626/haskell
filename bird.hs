@@ -6,7 +6,7 @@ import Control.Monad
 --Ex E
 
 first :: (a -> Bool) -> [a] -> Maybe a
-first p xs 
+first p xs
   | null fil = Nothing
   | otherwise = Just (head fil)
   where fil = filter p xs
