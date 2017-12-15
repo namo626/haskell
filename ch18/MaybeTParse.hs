@@ -3,6 +3,7 @@
 module MaybeTParse
   (
     Parse
+  , ParseState(ParseState, string, offset)
   , evalParse
   ) where
 

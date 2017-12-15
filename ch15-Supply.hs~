@@ -1,0 +1,1 @@
+runSupply :: Supply s a -> [s] -> (a, [s])
