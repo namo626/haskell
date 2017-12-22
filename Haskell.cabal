@@ -16,11 +16,14 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Lib
-  build-depends:       base >= 4.7 && < 5,
+  build-depends:       array >= 0.5.1.1,
+                       base >= 4.7 && < 5,
                        bytestring,
+                       containers >= 0.5.7.1,
                        directory,
                        filepath,
                        mtl,
+                       parsec,
                        transformers >= 0.5.2.0
   default-language:    Haskell2010
 
