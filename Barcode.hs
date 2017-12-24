@@ -1,4 +1,6 @@
 import Data.Array (Array(..), (!), bounds, elems, indices, ixmap, listArray)
+import Text.ParserCombinators.Parsec
+import Control.Monad.State
 import Control.Applicative ((<$>))
 import Control.Monad (forM_)
 import Data.Char (digitToInt)
@@ -77,3 +79,61 @@ rightEncode = (rightCodes !)
 
 outerGuard = "101"
 centerGuard = "01010"
+
+type Pixel = Char
+type RGB = (Pixel, Pixel, Pixel)
+type Pixmap = Array (Int, Int) RGB
+type PixParser a = GenParser Char () a
+
+parseRawPPM :: PixParser Pixmap
+parseRawPPM = do
+  header <- many (noneOf "\n")
+  spaces1
+  when (header /= "P6") (fail "invalid raw header")
+  width <- parseInt -- :: Int
+  spaces1
+  height <- parseInt
+  spaces1
+  maxValue <- parseInt
+  when (maxValue /= 255) (fail "max value out of spec")
+  parseByte
+  pxs <- count (width * height) parseRGB
+  return (listArray ((0,0), (width-1, height-1)) pxs)
+
+parseRGB :: PixParser RGB
+parseRGB = do
+  r <- parseByte
+  g <- parseByte
+  b <- parseByte
+  return (r,g,b)
+
+parseByte :: PixParser Pixel
+parseByte = anyChar 
+
+parseInt :: PixParser Int
+parseInt = read <$> many1 digit
+
+spaces1 :: PixParser ()
+spaces1 = skipMany1 space
+
+--converting to greyscale
+type Pixel2 = Int
+luminance :: RGB -> Pixel2
+luminance (r,g,b) = round (r' * 0.30 + g' * 0.59 + b' * 0.11) where
+  [r',g',b'] = map (fromIntegral . fromEnum) [r, g, b]
+
+type Greymap = Array (Int, Int) Pixel2
+pixmapToGreymap :: Pixmap -> Greymap
+pixmapToGreymap = fmap luminance
+
+data Bit = Zero | One deriving (Eq, Show)
+
+--converting a pixel to either black or white
+threshold :: (Ix k, Integral a) => Double -> Array k a -> Array k Bit
+threshold n a = binary `fmap` a where
+  binary i | i < pivot = Zero
+           | otherwise = One
+  pivot = round $ least + (greatest - least) * n
+  least = fromIntegral $ choose (<) a
+  greatest = fromIntegral $ choose (>) a
+  choose f = foldA1 $ \x y -> if f x y then x else y
