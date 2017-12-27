@@ -1,4 +1,6 @@
 import Data.Array (Array(..), (!), bounds, elems, indices, ixmap, listArray)
+import Control.Arrow ((&&&))
+import Data.Function (on)
 import Text.ParserCombinators.Parsec
 import Control.Monad.State
 import Control.Applicative ((<$>))
@@ -137,3 +139,86 @@ threshold n a = binary `fmap` a where
   least = fromIntegral $ choose (<) a
   greatest = fromIntegral $ choose (>) a
   choose f = foldA1 $ \x y -> if f x y then x else y
+
+--run-length encoding to normalize bar thickness from image file
+type Run = Int
+type RunLength a = [(Run, a)]
+
+runLength :: Eq a => [a] -> RunLength a
+runLength = map (length &&& head) . group where
+
+runLengths = map fst . runLength
+
+type Score = Ratio Int
+
+scaleToOne :: [Run] -> [Score]
+scaleToOne xs = map divide xs where
+  divide d = fromIntegral d / divisor
+  divisor = fromIntegral (sum xs)
+
+type ScoreTable = [[Score]]
+
+--asSRL converts code table into ratio table
+asSRL :: [String] -> ScoreTable
+asSRL = map (scaleToOne . runLengths)
+
+leftOddSRL = asSRL leftOddList
+leftEvenSRL = asSRL leftEvenList
+rightSRL = asSRL rightList
+paritySRL = asSRL parityList
+
+--comparing accuracies between 2 run encodings (scaled)
+distance :: [Score] -> [Score] -> Score
+distance a b = sum . map abs $ zipWith (-) a b
+
+type Digit = Word8
+bestScores :: ScoreTable -> [Run] -> [(Score, Digit)]
+bestScores srl ps = take 3 . sort $ scores where
+  scores = zip [distance d (scaleToOne ps) | d <- srl] [0..9]
+
+--remembering parity
+data Parity a = Even a | Odd a | None a deriving (Show)
+
+fromParity :: Parity a -> a
+fromParity (Even a) = a
+fromParity (Odd a) = a
+fromParity (None a) = a
+
+parityMap :: (a -> b) -> Parity a -> Parity b
+parityMap f (Even a) = Even (f a)
+parityMap f (Odd a) = Odd (f a)
+parityMap f (None a) = None (f a)
+
+instance Functor Parity where
+  fmap = parityMap
+
+compareWithoutParity = compare `on` fromParity
+
+bestLeft :: [Run] -> [Parity (Score, Digit)]
+bestLeft ps = sortBy compareWithoutParity
+              ((map Odd (bestScores leftOddSRL ps)) ++
+              (map Even (bestScores leftEvenSRL ps)))
+
+bestRight :: [Run] -> [Parity (Score, Digit)]
+bestRight = map None . bestScores rightSRL
+
+--chunking list into runs for each digit
+chunkWith :: ([a] -> ([a], [a])) -> [a] -> [[a]]
+chunkWith _ [] = []
+chunkWith f xs = let (h, t) = f xs in
+  h : chunkWith f t
+
+chunksOf :: Int -> [a] -> [[a]]
+chunksOf n = chunkWith (splitAt n)
+
+candidateDigits :: RunLength Bit -> [[Parity Digit]]
+candidateDigits ((_, One):_) = []
+candidateDigits rle | length rle < 59 = []
+candidateDigits rle
+  | any null match = []
+  | otherwise = map (map (fmap snd)) match
+  where match = map bestLeft left ++ map bestRight right
+        left = chunksOf 4 . take 24 . drop 3 $ runLengths
+        right = chunksOf 4 . take 24 . drop 32 $ runLengths
+        runLengths = map fst rle
+      
